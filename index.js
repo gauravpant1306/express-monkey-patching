@@ -7,7 +7,7 @@ function isScalar(v) {
     return typeof v !== 'object' && !Array.isArray(v);
 }
 
-mung.onError = (err, req, res, next) => {
+mung.onError = (err, req, res) => {
     res
         .status(500)
         .set('content-language', 'en')
@@ -34,7 +34,7 @@ mung.json = function json (fn, options) {
             try {
                 json = fn(json, req, res);
             } catch (e) {
-                return mung.onError(e, req, res, next);
+                return mung.onError(e, req, res);
             }
             if (res.headersSent)
                 return res;
@@ -56,6 +56,51 @@ mung.json = function json (fn, options) {
             return original.call(this, json);
         }
         res.json = json_hook;
+
+        next && next();
+    }
+}
+
+mung.send = function send (fn, options) {
+    return function (req, res, next) {
+        let original = res.json;
+        options = options || {};
+        let mungError = options.mungError;
+
+        function json_hook (json) {
+            let originalJson = json;
+            res.json = original;
+            if (res.headersSent)
+                return res;
+            if (!mungError && res.statusCode >= 400)
+                return original.call(this, json);
+
+            // Run the munger
+            try {
+                json = fn(json, req, res);
+            } catch (e) {
+                return mung.onError(e, req, res);
+            }
+            if (res.headersSent)
+                return res;
+
+            // If no returned value from fn, then assume json has been mucked with.
+            if (json === undefined)
+                json = originalJson;
+
+            // If null, then 204 No Content
+            if (json === null)
+                return res.status(204).end();
+
+            // If munged scalar value, then text/plain
+            if (originalJson !== json && isScalar(json)) {
+                res.set('content-type', 'text/plain');
+                return res.send(String(json));
+            }
+
+            return original.call(this, json);
+        }
+        res.send = json_hook;
 
         next && next();
     }
@@ -92,14 +137,58 @@ mung.jsonAsync = function json (fn, options) {
 
                     return original.call(this, json);
                 })
-                .catch(e => mung.onError(e, req, res, next));
+                .catch(e => mung.onError(e, req, res));
             } catch (e) {
-                mung.onError(e, req, res, next);
+                mung.onError(e, req, res);
             }
 
             return faux_fin;
         }
         res.json = json_async_hook;
+
+        next && next();
+    }
+}
+
+mung.sendAsync = function send (fn, options) {
+    return function (req, res, next) {
+        let original = res.json;
+        options = options || {};
+        let mungError = options.mungError;
+
+        function json_async_hook (json) {
+            let originalJson = json;
+            res.json = original;
+            if (res.headersSent)
+                return;
+            if (!mungError && res.statusCode >= 400)
+                return original.call(this, json);
+            try {
+                fn(json, req, res)
+                .then(json => {
+                    if (res.headersSent)
+                        return;
+
+                    // If null, then 204 No Content
+                    if (json === null)
+                        return res.status(204).end();
+
+                    // If munged scalar value, then text/plain
+                    if (json !== originalJson && isScalar(json)) {
+                        res.set('content-type', 'text/plain');
+                        return res.send(String(json));
+                    }
+
+                    return original.call(this, json);
+                })
+                .catch(e => mung.onError(e, req, res));
+            } catch (e) {
+                mung.onError(e, req, res);
+            }
+
+            return faux_fin;
+        }
+        res.send = json_async_hook;
 
         next && next();
     }
@@ -114,7 +203,7 @@ mung.headers = function headers (fn) {
                 try {
                     fn(req, res);
                 } catch (e) {
-                    return mung.onError(e, req, res, next);
+                    return mung.onError(e, req, res);
                 }
                 if (res.headersSent) {
                     console.error('sending response while in mung.headers is undefined behaviour');
@@ -134,7 +223,7 @@ mung.headersAsync = function headersAsync (fn) {
         let original = res.end;
         let onError = e => {
             res.end = original;
-            return mung.onError(e, req, res, next);
+            return mung.onError(e, req, res);
         };
         function headers_async_hook () {
             if (res.headersSent)
@@ -149,9 +238,9 @@ mung.headersAsync = function headersAsync (fn) {
                         return;
                     original.apply(this, args);
                 })
-                .catch(e => onError(e, req, res, next));
+                .catch(e => onError(e, req, res));
             } catch (e) {
-                onError(e, req, res, next);
+                onError(e, req, res);
             }
         }
         res.end = headers_async_hook;
@@ -201,7 +290,7 @@ mung.write = function write (fn, options = {}) {
                 return original.call(res, modifiedChunk, encoding, callback)
 
             } catch (err) {
-                return mung.onError(err, req, res, next);
+                return mung.onError(err, req, res);
             }
         }
 
