@@ -94,6 +94,4 @@ Asynchronously transform the HTTP headers of the response.
 # License
 The MIT license
 
-Copyright © 2015 Richard Schneider (makaretu@gmail.com)
 
-<a href="https://www.buymeacoffee.com/kmXOxKJ4E" target="_blank"><img src="https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png" alt="Buy Me A Coffee" style="height: auto !important;width: auto !important;" ></a>
